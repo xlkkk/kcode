@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kcode — AI Coding Agent</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --panel: #171a21;
+            --border: #262b36;
+            --text: #d8dee9;
+            --muted: #7b8494;
+            --accent: #4da3ff;
+            --ok: #4ade80;
+            --warn: #facc15;
+            --err: #f87171;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--panel);
+        }
+
+        header h1 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--muted);
+            flex-shrink: 0;
+        }
+
+        .dot.on {
+            background: var(--ok);
+        }
+
+        .dot.off {
+            background: var(--err);
+        }
+
+        #stages {
+            display: flex;
+            gap: 4px;
+            margin-left: auto;
+            flex-wrap: wrap;
+            max-width: 60%;
+        }
+
+        .stage {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            background: var(--border);
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .stage.cur {
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .stage.done {
+            background: #1c3a2a;
+            color: var(--ok);
+        }
+
+        main {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            scrollbar-width: thin;
+            scrollbar-color: #3a4152 transparent;
+            /* details 展开/收起会触发浏览器 scroll anchoring 视口跳变,
+               导致正在阅读的内容突然移位("下面的内容展示不出来")。 */
+            overflow-anchor: none;
+        }
+
+        main::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        main::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        main::-webkit-scrollbar-thumb {
+            background: #3a4152;
+            border-radius: 4px;
+        }
+
+        main::-webkit-scrollbar-thumb:hover {
+            background: #465061;
+        }
+
+        /* flex column 容器内容超高时默认触发 flex-shrink 压缩;.tool 因
+           overflow: hidden 最小高度变为 0,会被压成 2px 细条导致内容不可见。
+           统一禁止收缩,超出部分交给 main 的 overflow-y 滚动处理。 */
+        main>* {
+            flex-shrink: 0;
+        }
+
+        .msg {
+            max-width: 82%;
+            padding: 9px 13px;
+            border-radius: 10px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .msg.user {
+            align-self: flex-end;
+            background: #1d4ed8;
+        }
+
+        .msg.agent {
+            align-self: flex-start;
+            background: var(--panel);
+            border: 1px solid var(--border);
+        }
+
+        .msg.error {
+            align-self: flex-start;
+            background: #3a1518;
+            color: var(--err);
+            border: 1px solid #5c1f24;
+        }
+
+        .msg.notice {
+            align-self: center;
+            color: var(--muted);
+            font-size: 12px;
+            background: none;
+        }
+
+        .tool {
+            align-self: flex-start;
+            background: #141a26;
+            border: 1px solid #23304a;
+            border-radius: 10px;
+            max-width: 82%;
+            overflow: hidden;
+        }
+
+        .tool summary {
+            cursor: pointer;
+            padding: 7px 13px;
+            color: var(--accent);
+            font-size: 13px;
+            list-style: none;
+        }
+
+        .tool summary::before {
+            content: "⚙ ";
+        }
+
+        .tool pre {
+            padding: 8px 13px;
+            font-size: 12px;
+            color: var(--muted);
+            max-height: 200px;
+            overflow: auto;
+            border-top: 1px solid #23304a;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .tool pre.err {
+            color: var(--err);
+        }
+
+        footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 10px;
+            background: var(--panel);
+        }
+
+        #input {
+            flex: 1;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 10px 12px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            height: 44px;
+        }
+
+        #input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        #send {
+            padding: 0 22px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #send:disabled {
+            background: var(--border);
+            color: var(--muted);
+            cursor: not-allowed;
+        }
+
+        #abort {
+            padding: 0 18px;
+            border: 1px solid var(--err);
+            border-radius: 8px;
+            cursor: pointer;
+            background: transparent;
+            color: var(--err);
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #abort:hover {
+            background: #3a1518;
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .modal {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            width: min(600px, 92vw);
+            max-height: 84vh;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+            backdrop-filter: blur(12px);
+        }
+
+        .modal h3 {
+            font-size: 14px;
+        }
+
+        .modal .body {
+            overflow-y: auto;
+            font-size: 13px;
+            color: var(--muted);
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 45vh;
+        }
+
+        .modal textarea,
+        .modal input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 8px 10px;
+            font-size: 13px;
+            font-family: inherit;
+            width: 100%;
+        }
+
+        .modal .btns {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal button {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .modal .ok {
+            background: var(--ok);
+            color: #0a1410;
+        }
+
+        .modal .no {
+            background: var(--err);
+            color: #fff;
+        }
+
+        .modal .gray {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        /* --- AskUser 结构化问答面板 --- */
+        .ask {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+            max-height: 50vh;
+            padding-right: 4px;
+        }
+
+        .ask-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .ask-chip {
+            align-self: flex-start;
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: rgba(77, 163, 255, .15);
+            color: var(--accent);
+            font-weight: 600;
+            letter-spacing: .5px;
+        }
+
+        .ask-q {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .ask-opts {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .opt {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            cursor: pointer;
+            background: var(--bg);
+            transition: border-color .15s, background .15s, transform .1s;
+        }
+
+        .opt:hover {
+            border-color: var(--accent);
+            background: #1a2130;
+        }
+
+        .opt:active {
+            transform: scale(.99);
+        }
+
+        .opt.sel {
+            border-color: var(--accent);
+            background: rgba(77, 163, 255, .12);
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        .opt-ico {
+            font-size: 15px;
+            line-height: 1.3;
+            flex-shrink: 0;
+        }
+
+        .opt-body {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .opt-label {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .opt-desc {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .opt-mark {
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 13px;
+            visibility: hidden;
+            flex-shrink: 0;
+        }
+
+        .opt.sel .opt-mark {
+            visibility: visible;
+        }
+
+        .modal input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(77, 163, 255, .2);
+        }
+
+        .modal button {
+            transition: filter .15s, transform .1s, box-shadow .15s;
+        }
+
+        .modal button:hover {
+            filter: brightness(1.15);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+        }
+
+        .modal button:active {
+            transform: scale(.96);
+        }
+
+        .modal ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .modal ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .modal ::-webkit-scrollbar-thumb {
+            background: #333a47;
+            border-radius: 3px;
+        }
+
+        .modal ::-webkit-scrollbar-thumb:hover {
+            background: #465061;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <span class="dot" id="dot"></span>
+        <h1>kcode</h1>
+        <span id="status" style="color:var(--muted);font-size:12px;">连接中…</span>
+        <div id="stages"></div>
+    </header>
+
+    <main id="log"></main>
+
+    <footer>
+        <textarea id="input" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+        <button id="send">发送</button>
+        <button id="abort">中止</button>
+    </footer>
+
+    <div class="modal-mask hidden" id="modal">
+        <div class="modal">
+            <h3 id="modal-title"></h3>
+            <div class="body" id="modal-body"></div>
+            <div id="modal-extra"></div>
+            <div class="btns" id="modal-btns"></div>
+        </div>
+    </div>
+
+    <script>
+        "use strict";
+        const $ = (id) => document.getElementById(id);
+        const log = $("log"), input = $("input"), sendBtn = $("send");
+        // 滚动容器是 main(overflow-y:auto),不是 log;log 本身不滚动,
+        // 往 log 上设 scrollTop 无效,新消息就不会自动滚到底部。
+        const scroller = document.querySelector("main");
+        function scrollBottom() {
+            if (!scroller) return;
+            // 仅当用户已在底部附近时才自动跟随。用户主动上滚(拖到顶)后
+            // 新消息到达不再强制拉底,否则滚动条刚拖到顶又被拽回底部,
+            // 表现为"拖到顶后无法继续向下滚"。
+            const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+            if (nearBottom) scroller.scrollTop = scroller.scrollHeight;
+        }
+        let ws = null;
+        let curReply = null;      // 当前 agent 回复块
+        let pendingTools = {};    // id -> tool 详情
+        function addMsg(cls, text) {
+            const el = document.createElement("div");
+            el.className = "msg " + cls;
+            el.textContent = text;
+            log.appendChild(el);
+            scrollBottom();
+            return el;
+        }
+
+        function notice(text) {
+            addMsg("notice", text);
+        }
+
+        function setConn(on) {
+            $("dot").className = "dot " + (on ? "on" : "off");
+            $("status").textContent = on ? "已连接" : "已断开，3 秒后重连…";
+            sendBtn.disabled = !on;
+        }
+
+        function connect() {
+            ws = new WebSocket("ws://" + location.host + "/ws");
+            ws.onopen = () => setConn(true);
+            ws.onclose = () => { setConn(false); setTimeout(connect, 3000); };
+            ws.onerror = () => ws.close();
+            ws.onmessage = (ev) => {
+                let env; try { env = JSON.parse(ev.data); } catch { return; }
+                handle(env);
+            };
+        }
+
+        function handle(env) {
+            const d = env.data || {};
+            switch (env.type) {
+                case "stream_text":
+                    if (!curReply) curReply = addMsg("agent", "");
+                    curReply.textContent += d.text || "";
+                    scrollBottom();
+                    break;
+                case "tool_call": {
+                    const det = document.createElement("details");
+                    det.className = "tool";
+                    det.innerHTML = "<summary>调用工具 " + esc(d.name || "") + "</summary><pre>…</pre>";
+                    log.appendChild(det);
+                    scrollBottom();
+                    pendingTools[d.id] = det;
+                    break;
+                }
+                case "tool_result": {
+                    const det = pendingTools[d.id];
+                    if (det) {
+                        const pre = det.querySelector("pre");
+                        pre.textContent = (d.output || "").slice(0, 4000);
+                        pre.className = d.is_error ? "err" : "";
+                        // 不强制收起:保留用户展开状态,避免正在阅读的
+                        // details 被收起导致视口跳变。
+                        delete pendingTools[d.id];
+                    }
+                    break;
+                }
+                case "turn_complete":
+                    curReply = null;
+                    break;
+                case "workflow_timeline":
+                    renderStages(d.nodes || []);
+                    break;
+                case "review_request":
+                    openReview(d);
+                    break;
+                case "ask_user":
+                    openAsk(d);
+                    break;
+                case "permission_request":
+                    openPermission(d);
+                    break;
+                case "error":
+                    addMsg("error", "错误: " + (d.message || "未知"));
+                    break;
+                case "user_text":
+                    addMsg("agent", d.text || "");
+                    break;
+                case "sub_agent_progress":
+                    if (d.done) notice("子 Agent 完成: " + (d.name || ""));
+                    break;
+            }
+        }
+
+        function renderStages(nodes) {
+            const box = $("stages");
+            box.innerHTML = "";
+            for (const n of nodes) {
+                const el = document.createElement("span");
+                el.className = "stage" + (n.current ? " cur" : n.done ? " done" : "");
+                el.textContent = n.name;
+                el.title = n.desc || "";
+                box.appendChild(el);
+            }
+        }
+
+        // --- 模态框辅助 ---
+        function openModal(title, bodyText, extraHTML, btns) {
+            $("modal").classList.remove("hidden");
+            $("modal-title").textContent = title;
+            $("modal-body").textContent = bodyText;
+            $("modal-extra").innerHTML = extraHTML || "";
+            const box = $("modal-btns");
+            box.innerHTML = "";
+            for (const b of btns) {
+                const btn = document.createElement("button");
+                btn.className = b.cls || "gray";
+                btn.textContent = b.label;
+                btn.onclick = () => { $("modal").classList.add("hidden"); b.onclick && b.onclick(); };
+                box.appendChild(btn);
+            }
+        }
+
+        // --- 人工审核 ---
+        function openReview(d) {
+            openModal(
+                "工作流人工审核 — " + d.artifact_path,
+                d.artifact_content || "(空文档)",
+                '<textarea id="rv-feedback" placeholder="驳回意见（可选）" rows="3"></textarea>',
+                [
+                    { label: "通过", cls: "ok", onclick: () => send({ type: "review_response", data: { id: d.id, decision: "approve" } }) },
+                    { label: "驳回", cls: "no", onclick: () => send({ type: "review_response", data: { id: d.id, decision: "reject", feedback: $("rv-feedback").value } }) },
+                ]
+            );
+        }
+
+        // --- 问用户 ---
+        function openAsk(d) {
+            const qs = d.questions || [];
+            let html = '<div class="ask">';
+            qs.forEach((q) => {
+                html += '<div class="ask-item">';
+                if (q.header) html += '<div class="ask-chip">' + esc(q.header) + '</div>';
+                html += '<div class="ask-q">' + esc(q.question || "") + '</div>';
+                html += '<div class="ask-opts" data-multi="' + (q.multiSelect ? "1" : "0") + '">';
+                (q.options || []).forEach((o) => {
+                    html += '<div class="opt" data-label="' + esc(o.label || "") + '">'
+                        + '<span class="opt-ico">' + optIcon(o.label) + '</span>'
+                        + '<span class="opt-body"><span class="opt-label">' + esc(o.label || "") + '</span>'
+                        + (o.description ? '<span class="opt-desc">' + esc(o.description) + '</span>' : "")
+                        + '</span><span class="opt-mark">✓</span></div>';
+                });
+                html += '</div></div>';
+            });
+            html += '<input id="ask-answer" placeholder="或输入自定义答案（选填）"></div>';
+
+            openModal(
+                "需要你的回答",
+                "",
+                html,
+                [
+                    { label: "提交", cls: "ok", onclick: () => send({ type: "ask_user_response", data: { id: d.id, answers: collectAsk() } }) },
+                    { label: "跳过", cls: "gray", onclick: () => send({ type: "ask_user_response", data: { id: d.id, answers: {} } }) },
+                ]
+            );
+
+            // 选项卡片点击:单选互斥 / 多选可叠加
+            document.querySelectorAll(".ask-opts .opt").forEach(el => {
+                el.onclick = () => {
+                    const box = el.closest(".ask-opts");
+                    if (box.dataset.multi !== "1") {
+                        box.querySelectorAll(".opt").forEach(x => x.classList.remove("sel"));
+                    }
+                    el.classList.toggle("sel");
+                };
+            });
+        }
+
+        function optIcon(label) {
+            const s = String(label || "");
+            if (/链接|link|url/i.test(s)) return "🔗";
+            if (/文本|粘贴|text/i.test(s)) return "📝";
+            if (/规则|rule|斗地主|标准/i.test(s)) return "🎴";
+            if (/跳过|skip/i.test(s)) return "⏭️";
+            return "●";
+        }
+
+        function collectAsk() {
+            const parts = [];
+            document.querySelectorAll(".ask-item").forEach(item => {
+                const sel = Array.from(item.querySelectorAll(".opt.sel")).map(x => x.dataset.label);
+                if (sel.length) parts.push(sel.join("、"));
+            });
+            const el = $("ask-answer");
+            if (el && el.value.trim()) parts.push(el.value.trim());
+            return parts.length ? { answer: parts.join("；") } : {};
+        }
+
+        // --- 权限确认 ---
+        function openPermission(d) {
+            openModal(
+                "权限确认 — " + d.tool,
+                d.description || "(无描述)",
+                "",
+                [
+                    { label: "允许", cls: "ok", onclick: () => send({ type: "permission_response", data: { id: d.id, response: "allow" } }) },
+                    { label: "拒绝", cls: "no", onclick: () => send({ type: "permission_response", data: { id: d.id, response: "deny" } }) },
+                ]
+            );
+        }
+
+        function send(obj) {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+        }
+
+        function sendUser() {
+            const text = input.value.trim();
+            if (!text) return;
+            addMsg("user", text);
+            send({ type: "user_message", data: { content: text } });
+            input.value = "";
+        }
+
+        function esc(s) {
+            return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        }
+
+        $("send").onclick = sendUser;
+        $("abort").onclick = () => {
+            send({ type: "abort" });
+            notice("已发送中止指令，等待当前任务结束…");
+        };
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendUser(); }
+        });
+
+        fetch("/api/info").then(r => r.json()).then(info => {
+            notice("已连接 kcode 服务 · 模型 " + info.model + " · 工作目录 " + info.work_dir);
+        }).catch(() => { });
+        connect();
+    </script>
+</body>
+
+</html>

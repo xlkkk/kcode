@@ -1,0 +1,46 @@
+# kcode 配置
+# API Key 不写入本文件，运行时从环境变量 OPENAI_API_KEY 读取(火山方舟 API Key)
+providers:
+  - name: doubao
+    protocol: openai-compat
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    model: doubao-seed-2-1-pro-260628
+    context_window: 256000
+
+permission_mode: default
+
+mcp_servers: []
+
+hooks: []
+
+sandbox:
+  enabled: false
+  auto_allow: false
+  network_enabled: false
+
+# 工作流强制流程:开启后 agent 强制按五阶段流水线开发
+# (init → flow_analysis → module_design(人工审核) → code_gen
+#  → self_test → qa_cases → done),
+# 状态持久化到 .kcode/workflow.json,支持断点续跑。设计见 game.md。
+workflow:
+  enabled: true
+  # init → flow_analysis 强制先读策划案(需配合 feishu 与 read_feishu_doc,当前未启用)
+  require_plan: false
+  # 需要人工审核的阶段(当前仅支持 module_design)
+  review_stages:
+    - module_design
+  # 实跑 go build / go test 校验退出条件
+  require_build: true
+  require_test: true
+  # 要求对局模拟达标才能 self_test → qa_cases
+  require_simulation: true
+
+# 飞书集成(client 模式):策划案从飞书文档读取(read_feishu_doc),
+# QA 案例写回飞书(write_feishu_doc)。使用内部应用凭证直接访问 OpenAPI。
+# 拿凭证:飞书开放平台(open.feishu.cn)→ 开发者后台 → 创建企业自建应用,
+# 「凭证与基础信息」页即可看到 App ID / App Secret。
+feishu:
+  enabled: true
+  app_id: ""
+  app_secret: ""
+  # base_url: https://open.feishu.cn   # 私有化部署时覆盖

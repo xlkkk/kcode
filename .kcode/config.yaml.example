@@ -1,0 +1,58 @@
+# kcode 配置示例
+providers:
+  - name: anthropic
+    protocol: anthropic
+    base_url: https://api.anthropic.com
+    model: claude-sonnet-4-20250514
+    thinking: true
+    context_window: 200000
+
+  - name: openai
+    protocol: openai
+    base_url: https://api.openai.com/v1
+    model: gpt-4o
+    context_window: 128000
+
+permission_mode: default
+
+mcp_servers: []
+  # stdio 方式（本地子进程）
+  # - name: filesystem
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  # url 方式（远程服务）
+  # - name: remote-tools
+  #   url: https://mcp.example.com/mcp
+
+hooks: []
+
+sandbox:
+  enabled: false
+  auto_allow: false
+  network_enabled: false
+
+# 工作流强制流程(游戏项目):开启后 agent 强制按五阶段流水线开发
+# (流程梳理 → 模块划分人工审核 → 代码生成 → 自测 → QA 案例),
+# 状态持久化到 .kcode/workflow.json,支持断点续跑。设计见 game.md。
+workflow:
+  enabled: false
+  # init → flow_analysis 强制先读策划案(需配合下方 feishu 与 read_feishu_doc)
+  require_plan: false
+  # 需要人工审核的阶段(当前仅支持 module_design;不填默认 [module_design])
+  review_stages:
+    - module_design
+  # 是否实跑 go build / go test 校验退出条件(不填默认 true)
+  require_build: true
+  require_test: true
+  # 是否要求对局模拟达标才能 self_test → qa_cases(不填默认 true):
+  # agent 需在 self_test 阶段生成 simulation/main.go 并调用 simulate_match
+  # 完成概率分布与金币守恒验证(局数≥1000,守恒误差≤0.5%)
+  require_simulation: true
+
+# 飞书集成(client 模式):策划案从飞书文档读取(read_feishu_doc),
+# QA 案例写回飞书(write_feishu_doc)。使用内部应用凭证直接访问 OpenAPI。
+feishu:
+  enabled: false
+  app_id: cli_xxxxxxxx
+  app_secret: xxxxxxxx
+  # base_url: https://open.feishu.cn   # 私有化部署时覆盖

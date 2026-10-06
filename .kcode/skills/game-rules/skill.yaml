@@ -1,0 +1,10 @@
+name: game-rules
+description: 棋牌游戏牌型判定与规则引擎参考实现（斗地主牌型体系 + 麻将胡牌检测），含可运行 Go 代码模板与表驱动测试向量策略，供 code_gen 阶段生成规则模块时引用。
+when_to_use: 当策划案涉及斗地主/麻将等棋牌玩法、需要实现牌型判定、大小比较、胡牌检测、番数计算或规则引擎模块时使用；self_test 阶段设计概率验证与对局模拟时也可参考其中的测试向量方法。
+tags:
+  - game
+  - rules
+  - dou-dizhu
+  - mahjong
+  - engine
+mode: inline

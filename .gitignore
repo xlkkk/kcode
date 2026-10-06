@@ -1,0 +1,20 @@
+bin/
+dist/
+coverage.out
+coverage.html
+*.swp
+*.swo
+.DS_Store
+beizhu.md
+mcp.md
+eino.md
+game.md
+
+# 本地配置与运行态文件
+.kcode/config.local.yaml
+.kcode/workflow.json
+.kcode/memory/
+.kcode/file-history/
+.kcode/tasks/
+docs/
+
