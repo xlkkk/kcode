@@ -32,6 +32,8 @@ import (
 	"kcode/internal/memory/extractor"
 	"kcode/internal/middleware"
 	"kcode/internal/permissions"
+	"kcode/internal/prompt"
+	"kcode/internal/skills"
 	"kcode/internal/teams"
 	"kcode/internal/todo"
 	"kcode/internal/tools"
@@ -255,9 +257,17 @@ func (s *Session) buildAgent(ctx context.Context) error {
 	// Lead 主任务板；队友用各自团队的任务板（BindTeammateTools 绑定）。
 	mainList := todo.NewTaskList(todo.NewStore(workDir, "main"))
 
+	// Skill 目录：三层合并加载(builtin→user→project)。清单注入 System
+	// Prompt 供 LLM 按需 LoadSkill；目录引用同时交给 AgentOptions 以注册
+	// LoadSkill/InstallSkill 工具。
+	skillCatalog := skills.LoadCatalog(workDir)
+
 	systemPrompt := baseSystemPrompt
 	if s.wfState != nil {
 		systemPrompt += workflowSystemPrompt
+	}
+	if skillSection := prompt.BuildSkillSection(skillCatalog, workDir); skillSection != "" {
+		systemPrompt += skillSection
 	}
 
 	s.agent, err = agent.NewAgent(ctx, agent.AgentOptions{
@@ -269,6 +279,7 @@ func (s *Session) buildAgent(ctx context.Context) error {
 		RuleEngine:    ruleEngine,
 		PermMode:      mode,
 		MCPManager:    s.mcpMgr,
+		SkillCatalog:  skillCatalog,
 		WorkDir:       workDir,
 		AskUserCh:     s.askCh,
 		FileHistory:   s.fileHist,
